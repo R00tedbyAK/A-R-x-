@@ -2,7 +2,7 @@
 
 > **Instant, friction-free online image clipboard for cross-device sharing.**
 
-# A¡R\x/ is a lightweight web application that lets you move visual content between computers, phones, and tablets in seconds. Simply paste (`Ctrl+V`) or drop an image into a room to generate a temporary clipboard space and a unique QR code for instant mobile access.
+A¡R\x/ is a lightweight web application that lets you move visual content between computers, phones, and tablets in seconds. Simply paste (`Ctrl+V`) or drop an image into a room to generate a temporary clipboard space and a unique QR code for instant mobile access.
 
 ---
 
