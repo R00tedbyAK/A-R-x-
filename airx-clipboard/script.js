@@ -1,16 +1,11 @@
-// --- Word list & Memorable Room ID Generator ---
+// --- Word List & Room ID Generator ---
 const roomWords = [
   'cat', 'touch', 'nano', 'ghost', 'alpha', 'pulse', 'orbit', 'sonic', 'drift'
 ];
 
-// Generates memorable room IDs (e.g., touch7931, cat2356, nano5491)
 function generateHandle() {
-  // Pick a random word from the array
   const randomWord = roomWords[Math.floor(Math.random() * roomWords.length)];
-  
-  // Generate a random 4-digit number between 1000 and 9999
   const randomNumber = Math.floor(1000 + Math.random() * 9000);
-  
   return `${randomWord}${randomNumber}`;
 }
 
@@ -35,10 +30,12 @@ const btnSave = document.getElementById('btnSave');
 const btnClear = document.getElementById('btnClear');
 const copyUrlBtn = document.getElementById('copyUrlBtn');
 
-// --- Core Helper Functions ---
+// --- QR Code & Navigation ---
 
 function updateQRCode(url) {
   const qrContainer = document.getElementById('qrcode');
+  if (!qrContainer) return;
+  
   qrContainer.innerHTML = '';
   qrcodeInstance = new QRCode(qrContainer, {
     text: url,
@@ -53,11 +50,8 @@ function updateQRCode(url) {
 function setRoom(roomId) {
   currentRoom = roomId;
   window.location.hash = roomId;
-  roomInput.value = roomId;
+  if (roomInput) roomInput.value = roomId;
   updateQRCode(window.location.href);
-
-  // BACKEND INTEGRATION POINT:
-  // fetchRoomImageContent(roomId);
 }
 
 function initRoom() {
@@ -69,81 +63,96 @@ function initRoom() {
   }
 }
 
+// --- Image Processing & Display ---
+
 function renderImage(dataUrl) {
   imageDisplay.src = dataUrl;
-  emptyState.classList.add('hidden');
-  imageDisplayContainer.classList.remove('hidden');
-
-  // BACKEND INTEGRATION POINT:
-  // uploadRoomImageContent(currentRoom, dataUrl);
+  if (emptyState) emptyState.classList.add('hidden');
+  if (imageDisplayContainer) imageDisplayContainer.classList.remove('hidden');
 }
 
 function handleFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
+  if (!file || !file.type.startsWith('image/')) {
+    if (typeof swal === "function") {
+      swal("Invalid File", "Please select or paste a valid image file.", "error");
+    } else {
+      alert("Please select or paste a valid image file.");
+    }
+    return;
+  }
+  
   const reader = new FileReader();
   reader.onload = (e) => renderImage(e.target.result);
   reader.readAsDataURL(file);
 }
 
-// --- Action Toolbar Controls ---
+// --- Button Actions (Klipit Spec) ---
 
-// 1. COPY ACTION
-btnCopy.addEventListener('click', async () => {
-  if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
-    alert('No image to copy!');
-    return;
-  }
-  try {
-    const response = await fetch(imageDisplay.src);
-    const blob = await response.blob();
-    await navigator.clipboard.write([
-      new ClipboardItem({ [blob.type]: blob })
-    ]);
-    const origText = btnCopy.textContent;
-    btnCopy.textContent = '✅ Copied!';
-    setTimeout(() => btnCopy.textContent = origText, 2000);
-  } catch (err) {
-    alert('Copy failed. Try right-clicking the image directly.');
-  }
-});
+// 1. COPY BUTTON: Fetches binary blob and writes to navigator.clipboard
+if (btnCopy) {
+  btnCopy.addEventListener('click', async () => {
+    if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
+      swal ? swal("Empty Canvas", "No image available to copy!", "warning") : alert("No image available to copy!");
+      return;
+    }
 
-// 2. REFRESH ACTION
-btnRefresh.addEventListener('click', () => {
-  const origText = btnRefresh.textContent;
-  btnRefresh.textContent = 'Syncing...';
-  
-  // Reload content logic
-  // fetchRoomImageContent(currentRoom);
+    try {
+      const response = await fetch(imageDisplay.src);
+      const blob = await response.blob();
+      
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type]: blob })
+      ]);
 
-  setTimeout(() => btnRefresh.textContent = origText, 1000);
-});
+      const originalText = btnCopy.textContent;
+      btnCopy.textContent = '✅ Copied!';
+      setTimeout(() => { btnCopy.textContent = originalText; }, 2000);
+    } catch (err) {
+      console.error('Copy execution error:', err);
+      swal ? swal("Copy Failed", "Browser clipboard permissions blocked direct copy. Right-click image to copy manually.", "error") 
+           : alert("Copy failed. Try right-clicking the image directly.");
+    }
+  });
+}
 
-// 3. SAVE ACTION
-btnSave.addEventListener('click', () => {
-  if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
-    alert('No image to save!');
-    return;
-  }
-  const link = document.createElement('a');
-  link.href = imageDisplay.src;
-  link.download = `clipimage-${currentRoom}.png`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-});
+// 2. SAVE BUTTON: Generates programmatic local anchor download
+if (btnSave) {
+  btnSave.addEventListener('click', () => {
+    if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
+      swal ? swal("Empty Canvas", "No image available to save!", "warning") : alert("No image available to save!");
+      return;
+    }
 
-// 4. CLEAR ACTION
-btnClear.addEventListener('click', () => {
-  imageDisplay.src = '';
-  emptyState.classList.remove('hidden');
-  imageDisplayContainer.classList.add('hidden');
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.href = imageDisplay.src;
+    downloadAnchor.download = `airx-${currentRoom}.png`;
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    document.body.removeChild(downloadAnchor);
+  });
+}
 
-  // BACKEND INTEGRATION POINT:
-  // deleteRoomImageContent(currentRoom);
-});
+// 3. REFRESH BUTTON: Reloads room payload state
+if (btnRefresh) {
+  btnRefresh.addEventListener('click', () => {
+    const originalText = btnRefresh.textContent;
+    btnRefresh.textContent = 'Syncing...';
+    setTimeout(() => { btnRefresh.textContent = originalText; }, 1000);
+  });
+}
+
+// 4. CLEAR BUTTON: Resets image display container back to empty state
+if (btnClear) {
+  btnClear.addEventListener('click', () => {
+    imageDisplay.src = '';
+    if (emptyState) emptyState.classList.remove('hidden');
+    if (imageDisplayContainer) imageDisplayContainer.classList.add('hidden');
+  });
+}
 
 // --- Event Listeners ---
 
+// Global Clipboard Paste Listener
 window.addEventListener('paste', (e) => {
   const items = e.clipboardData?.items;
   if (!items) return;
@@ -157,46 +166,60 @@ window.addEventListener('paste', (e) => {
   }
 });
 
-dropZone.addEventListener('click', () => fileInput.click());
+// Drag and Drop Zone Handling
+if (dropZone) {
+  dropZone.addEventListener('click', () => fileInput && fileInput.click());
 
-fileInput.addEventListener('change', (e) => {
-  if (e.target.files.length) handleFile(e.target.files[0]);
-});
-
-['dragenter', 'dragover'].forEach(name => {
-  dropZone.addEventListener(name, (e) => {
-    e.preventDefault();
-    dropZone.classList.add('drag-over');
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
   });
-});
 
-['dragleave', 'drop'].forEach(name => {
-  dropZone.addEventListener(name, (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('drag-over');
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+    });
   });
-});
 
-dropZone.addEventListener('drop', (e) => {
-  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-});
+  dropZone.addEventListener('drop', (e) => {
+    if (e.dataTransfer.files.length) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+}
 
-// Room navigation controls
-goRoomBtn.addEventListener('click', () => {
-  const val = roomInput.value.trim();
-  if (val) setRoom(val);
-});
+if (fileInput) {
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+}
 
-newRoomBtn.addEventListener('click', () => {
-  setRoom(generateHandle());
-  btnClear.click();
-});
+// Room Management Controls
+if (goRoomBtn) {
+  goRoomBtn.addEventListener('click', () => {
+    const value = roomInput.value.trim();
+    if (value) setRoom(value);
+  });
+}
 
-copyUrlBtn.addEventListener('click', () => {
-  navigator.clipboard.writeText(window.location.href);
-  copyUrlBtn.textContent = 'Link Copied!';
-  setTimeout(() => copyUrlBtn.textContent = 'Copy Room URL', 2000);
-});
+if (newRoomBtn) {
+  newRoomBtn.addEventListener('click', () => {
+    setRoom(generateHandle());
+    if (btnClear) btnClear.click();
+  });
+}
 
-// Initialize app state
+if (copyUrlBtn) {
+  copyUrlBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(window.location.href);
+    const originalText = copyUrlBtn.textContent;
+    copyUrlBtn.textContent = 'Link Copied!';
+    setTimeout(() => { copyUrlBtn.textContent = originalText; }, 2000);
+  });
+}
+
+// Entrypoint Initialization
 initRoom();
