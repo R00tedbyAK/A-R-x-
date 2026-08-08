@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClipImage - Online Image Clipboard</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- QR Code Generator CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+
+  <!-- Header Section -->
+  <header class="border-b border-slate-800 bg-slate-950/50 backdrop-blur px-6 py-4 flex flex-wrap justify-between items-center gap-4">
+    <div class="flex items-center gap-2">
+      <div class="bg-blue-600 p-2 rounded-lg font-bold text-white text-xl">📋</div>
+      <h1 class="text-xl font-bold tracking-wide">A¡R<span class="text-blue-500">\x/</span></h1>
+    </div>
+
+    <!-- Room / Clipboard Handle Controls -->
+    <div class="flex items-center gap-2 bg-slate-800 p-1.5 rounded-lg border border-slate-700">
+      <span class="text-xs text-slate-400 pl-2 font-mono">Room:</span>
+      <input type="text" id="roomInput" class="bg-slate-900 text-blue-400 font-mono px-2 py-1 text-sm rounded border border-slate-700 outline-none w-28 text-center" placeholder="room-id" />
+      <button id="goRoomBtn" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded transition">Go</button>
+      <button id="newRoomBtn" class="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-1.5 rounded transition">New</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+
+    <!-- Left Column: Upload & Image Display -->
+    <section class="md:col-span-2 flex flex-col gap-4">
+      
+      <!-- Dropzone / Paste Target -->
+      <div id="dropZone" class="border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-2xl p-8 bg-slate-800/40 flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[200px] group">
+        <input type="file" id="fileInput" accept="image/*" class="hidden" />
+        <div class="w-12 h-12 mb-3 text-slate-400 group-hover:text-blue-500 transition-colors">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+        </div>
+        <p class="text-lg font-medium text-slate-200">Press <kbd class="px-2 py-1 bg-slate-700 rounded text-xs text-blue-400 font-mono">Ctrl + V</kbd> anywhere to paste</p>
+        <p class="text-sm text-slate-400 mt-1">or drag & drop / click to upload</p>
+      </div>
+
+      <!-- Image Canvas Area -->
+      <div class="bg-slate-800/60 rounded-2xl border border-slate-700 p-4 flex-1 flex flex-col">
+        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Clipboard Canvas</h2>
+
+        <!-- Empty State Placeholder -->
+        <div id="emptyState" class="flex-1 flex flex-col items-center justify-center min-h-[220px] text-slate-500">
+          <p class="text-sm">No image pasted in this room yet.</p>
+        </div>
+
+        <!-- Image Display -->
+        <div id="imageDisplayContainer" class="hidden flex-1 flex items-center justify-center bg-slate-950/50 rounded-xl p-2 border border-slate-800">
+          <img id="imageDisplay" src="" alt="Clipboard Content" class="max-h-[400px] w-auto object-contain rounded-lg shadow-lg" />
+        </div>
+
+        <!-- Control Action Toolbar -->
+        <div id="actionToolbar" class="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-4">
+          <button id="btnCopy" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-md shadow transition flex items-center gap-2">
+            Copy
+          </button>
+          
+          <button id="btnRefresh" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-md shadow transition flex items-center gap-2">
+            Refresh
+          </button>
+          
+          <button id="btnSave" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-md shadow transition flex items-center gap-2">
+            Save
+          </button>
+          
+          <button id="btnClear" class="bg-stone-600 hover:bg-stone-700 text-white font-medium px-5 py-2 rounded-md shadow transition flex items-center gap-2">
+            Clear
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Right Column: QR Code & Connection Panel -->
+    <section class="flex flex-col gap-4">
+      <div class="bg-slate-800/60 rounded-2xl border border-slate-700 p-6 flex flex-col items-center text-center">
+        <h3 class="text-md font-semibold text-slate-200 mb-1">Open on Phone</h3>
+        <p class="text-xs text-slate-400 mb-4">Scan QR code to access this room on another device.</p>
+        
+        <!-- QR Container -->
+        <div class="bg-white p-3 rounded-xl shadow-inner mb-4" id="qrcode"></div>
+
+        <button id="copyUrlBtn" class="w-full bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded-lg border border-slate-600 transition font-mono">
+          Copy Room URL
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Application Logic -->
+  <script src="script.js"></script>
+</body>
+</html>
