@@ -30,7 +30,7 @@ const btnSave = document.getElementById('btnSave');
 const btnClear = document.getElementById('btnClear');
 const copyUrlBtn = document.getElementById('copyUrlBtn');
 
-// --- Canvas Image Converter for Clipboard API ---
+// --- Helper: Canvas Conversion for Clipboard API ---
 function getCanvasPngBlob(imgElement) {
   return new Promise((resolve, reject) => {
     try {
@@ -41,7 +41,6 @@ function getCanvasPngBlob(imgElement) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(imgElement, 0, 0);
 
-      // Force output to PNG Blob
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
         else reject(new Error('Canvas blob generation failed'));
@@ -52,7 +51,7 @@ function getCanvasPngBlob(imgElement) {
   });
 }
 
-// --- QR Code & Navigation ---
+// --- QR Code & Room Sync ---
 function updateQRCode(url) {
   const qrContainer = document.getElementById('qrcode');
   if (!qrContainer) return;
@@ -68,12 +67,23 @@ function updateQRCode(url) {
   });
 }
 
-function loadRoomData(roomId) {
-  const savedImage = localStorage.getItem(`airx_room_${roomId}`);
-  if (savedImage) {
-    renderImage(savedImage);
-  } else {
+// Fetch image payload from Backend API for currentRoom
+async function fetchRoomData(roomId) {
+  try {
+    const response = await fetch(`/api/room?id=${encodeURIComponent(roomId)}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.imageData) {
+        renderImage(data.imageData);
+        return;
+      }
+    }
+    
+    // Clear display if room is empty or 404
     clearDisplay();
+  } catch (err) {
+    console.error('Failed to fetch room data from backend:', err);
   }
 }
 
@@ -82,7 +92,7 @@ function setRoom(roomId) {
   window.location.hash = roomId;
   if (roomInput) roomInput.value = roomId;
   updateQRCode(window.location.href);
-  loadRoomData(roomId);
+  fetchRoomData(roomId);
 }
 
 function initRoom() {
@@ -118,7 +128,9 @@ function handleFile(file) {
   reader.readAsDataURL(file);
 }
 
-// --- Fixed Copy Action ---
+// --- Button Actions ---
+
+// 1. COPY BUTTON: Converts Image to PNG Blob and writes to Clipboard
 if (btnCopy) {
   btnCopy.addEventListener('click', async () => {
     if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
@@ -127,10 +139,8 @@ if (btnCopy) {
     }
 
     try {
-      // 1. Convert any image format (JPEG, WebP, Base64) to PNG Blob via Canvas
       const pngBlob = await getCanvasPngBlob(imageDisplay);
 
-      // 2. Write to system clipboard
       await navigator.clipboard.write([
         new ClipboardItem({ 'image/png': pngBlob })
       ]);
@@ -142,53 +152,65 @@ if (btnCopy) {
       console.error('Clipboard Error:', err);
 
       if (!window.isSecureContext) {
-        alert("Copying images directly requires a secure context (HTTPS or http://localhost). If opening locally, use VS Code Live Server.");
+        alert("Copying images directly requires HTTPS or http://localhost.");
       } else {
-        alert("Copy failed. Try right-clicking the image and selecting 'Copy Image'.");
+        alert("Copy failed. Try right-clicking the image directly and selecting 'Copy Image'.");
       }
     }
   });
 }
 
-// --- Save Action (Saves to Room Storage) ---
+// 2. SAVE BUTTON: Posts ImageData to Backend Room Store
 if (btnSave) {
-  btnSave.addEventListener('click', () => {
+  btnSave.addEventListener('click', async () => {
     if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
       alert("No image available to save!");
       return;
     }
 
+    const originalText = btnSave.textContent;
+    btnSave.textContent = 'Saving...';
+
     try {
-      localStorage.setItem(`airx_room_${currentRoom}`, imageDisplay.src);
-      const originalText = btnSave.textContent;
-      btnSave.textContent = '✅ Saved to Room!';
-      setTimeout(() => { btnSave.textContent = originalText; }, 2000);
+      const response = await fetch(`/api/room?id=${encodeURIComponent(currentRoom)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData: imageDisplay.src })
+      });
+
+      if (response.ok) {
+        btnSave.textContent = '✅ Saved to Room!';
+      } else {
+        const errData = await response.json();
+        alert(`Failed to save: ${errData.error || 'Server error'}`);
+      }
     } catch (err) {
-      console.error('Room save error:', err);
-      alert("Failed to save image to room storage. The image may exceed browser storage limits.");
+      console.error('Save error:', err);
+      alert("Network error: Could not save image to room endpoint.");
+    } finally {
+      setTimeout(() => { btnSave.textContent = originalText; }, 2000);
     }
   });
 }
 
-// --- Refresh Action ---
+// 3. REFRESH BUTTON: Syncs room payload from Backend Store
 if (btnRefresh) {
-  btnRefresh.addEventListener('click', () => {
+  btnRefresh.addEventListener('click', async () => {
     const originalText = btnRefresh.textContent;
     btnRefresh.textContent = 'Syncing...';
-    loadRoomData(currentRoom);
+    await fetchRoomData(currentRoom);
     setTimeout(() => { btnRefresh.textContent = originalText; }, 1000);
   });
 }
 
-// --- Clear Action (Clears Display & Room Storage) ---
+// 4. CLEAR BUTTON: Clears UI display
 if (btnClear) {
   btnClear.addEventListener('click', () => {
-    localStorage.removeItem(`airx_room_${currentRoom}`);
     clearDisplay();
   });
 }
 
-// --- Global Paste & Drag Drop Event Listeners ---
+// --- Global Paste & Drag-Drop Event Listeners ---
 window.addEventListener('paste', (e) => {
   const items = e.clipboardData?.items;
   if (!items) return;
@@ -254,4 +276,5 @@ if (copyUrlBtn) {
   });
 }
 
+// Entrypoint Initialization
 initRoom();
