@@ -1,0 +1,18 @@
+/* Custom CSS Adjustments */
+
+/* Visual feedback on file dragover */
+.drag-over {
+  border-color: #3b82f6 !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Custom button styling overrides if needed */
+#actionToolbar button {
+  min-width: 90px;
+  justify-content: center;
+}
+
+/* Image container smooth sizing */
+#imageDisplayContainer img {
+  transition: opacity 0.2s ease-in-out;
+}
