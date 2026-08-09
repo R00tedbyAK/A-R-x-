@@ -68,11 +68,21 @@ function updateQRCode(url) {
   });
 }
 
+function loadRoomData(roomId) {
+  const savedImage = localStorage.getItem(`airx_room_${roomId}`);
+  if (savedImage) {
+    renderImage(savedImage);
+  } else {
+    clearDisplay();
+  }
+}
+
 function setRoom(roomId) {
   currentRoom = roomId;
   window.location.hash = roomId;
   if (roomInput) roomInput.value = roomId;
   updateQRCode(window.location.href);
+  loadRoomData(roomId);
 }
 
 function initRoom() {
@@ -89,6 +99,12 @@ function renderImage(dataUrl) {
   imageDisplay.src = dataUrl;
   if (emptyState) emptyState.classList.add('hidden');
   if (imageDisplayContainer) imageDisplayContainer.classList.remove('hidden');
+}
+
+function clearDisplay() {
+  imageDisplay.src = '';
+  if (emptyState) emptyState.classList.remove('hidden');
+  if (imageDisplayContainer) imageDisplayContainer.classList.add('hidden');
 }
 
 function handleFile(file) {
@@ -134,7 +150,7 @@ if (btnCopy) {
   });
 }
 
-// --- Save Action ---
+// --- Save Action (Saves to Room Storage) ---
 if (btnSave) {
   btnSave.addEventListener('click', () => {
     if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
@@ -142,12 +158,15 @@ if (btnSave) {
       return;
     }
 
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.href = imageDisplay.src;
-    downloadAnchor.download = `airx-${currentRoom}.png`;
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    document.body.removeChild(downloadAnchor);
+    try {
+      localStorage.setItem(`airx_room_${currentRoom}`, imageDisplay.src);
+      const originalText = btnSave.textContent;
+      btnSave.textContent = '✅ Saved to Room!';
+      setTimeout(() => { btnSave.textContent = originalText; }, 2000);
+    } catch (err) {
+      console.error('Room save error:', err);
+      alert("Failed to save image to room storage. The image may exceed browser storage limits.");
+    }
   });
 }
 
@@ -156,16 +175,16 @@ if (btnRefresh) {
   btnRefresh.addEventListener('click', () => {
     const originalText = btnRefresh.textContent;
     btnRefresh.textContent = 'Syncing...';
+    loadRoomData(currentRoom);
     setTimeout(() => { btnRefresh.textContent = originalText; }, 1000);
   });
 }
 
-// --- Clear Action ---
+// --- Clear Action (Clears Display & Room Storage) ---
 if (btnClear) {
   btnClear.addEventListener('click', () => {
-    imageDisplay.src = '';
-    if (emptyState) emptyState.classList.remove('hidden');
-    if (imageDisplayContainer) imageDisplayContainer.classList.add('hidden');
+    localStorage.removeItem(`airx_room_${currentRoom}`);
+    clearDisplay();
   });
 }
 
@@ -223,7 +242,6 @@ if (goRoomBtn) {
 if (newRoomBtn) {
   newRoomBtn.addEventListener('click', () => {
     setRoom(generateHandle());
-    if (btnClear) btnClear.click();
   });
 }
 
