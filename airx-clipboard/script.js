@@ -30,38 +30,29 @@ const btnSave = document.getElementById('btnSave');
 const btnClear = document.getElementById('btnClear');
 const copyUrlBtn = document.getElementById('copyUrlBtn');
 
-// --- Helper Functions ---
-
-// Converts Base64 Data URL directly to a strictly-typed Image Blob
-function dataURLtoBlob(dataurl) {
-  const arr = dataurl.split(',');
-  const mime = arr[0].match(/:(.*?);/)[1];
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) {
-    u8arr[n] = bstr.charCodeAt(n);
-  }
-  return new Blob([u8arr], { type: mime || 'image/png' });
-}
-
-// Fallback: Redraws image on HTML5 Canvas to produce a guaranteed PNG Blob
-function imageToCanvasBlob(img) {
+// --- Canvas Image Converter for Clipboard API ---
+function getCanvasPngBlob(imgElement) {
   return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('Canvas blob generation failed'));
-    }, 'image/png');
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = imgElement.naturalWidth || imgElement.width;
+      canvas.height = imgElement.naturalHeight || imgElement.height;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(imgElement, 0, 0);
+
+      // Force output to PNG Blob
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Canvas blob generation failed'));
+      }, 'image/png');
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
 // --- QR Code & Navigation ---
-
 function updateQRCode(url) {
   const qrContainer = document.getElementById('qrcode');
   if (!qrContainer) return;
@@ -94,7 +85,6 @@ function initRoom() {
 }
 
 // --- Image Processing & Display ---
-
 function renderImage(dataUrl) {
   imageDisplay.src = dataUrl;
   if (emptyState) emptyState.classList.add('hidden');
@@ -103,11 +93,7 @@ function renderImage(dataUrl) {
 
 function handleFile(file) {
   if (!file || !file.type.startsWith('image/')) {
-    if (typeof swal === "function") {
-      swal("Invalid File", "Please select or paste a valid image file.", "error");
-    } else {
-      alert("Please select or paste a valid image file.");
-    }
+    alert("Please select or paste a valid image file.");
     return;
   }
   
@@ -116,72 +102,43 @@ function handleFile(file) {
   reader.readAsDataURL(file);
 }
 
-// --- Button Actions ---
-
-// 1. COPY BUTTON: Tries direct Base64 Blob conversion -> Canvas fallback -> Clipboard
+// --- Fixed Copy Action ---
 if (btnCopy) {
   btnCopy.addEventListener('click', async () => {
     if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
-      swal ? swal("Empty Canvas", "No image available to copy!", "warning") : alert("No image available to copy!");
+      alert("No image available to copy!");
       return;
     }
 
     try {
-      let blob;
+      // 1. Convert any image format (JPEG, WebP, Base64) to PNG Blob via Canvas
+      const pngBlob = await getCanvasPngBlob(imageDisplay);
 
-      if (imageDisplay.src.startsWith('data:')) {
-        blob = dataURLtoBlob(imageDisplay.src);
-      } else {
-        // Fetch external/HTTP URL sources
-        const response = await fetch(imageDisplay.src);
-        blob = await response.blob();
-      }
-
-      // Convert JPEG/WebP or invalid formats to standard image/png for Clipboard API compatibility
-      if (!['image/png', 'image/jpeg'].includes(blob.type)) {
-        blob = await imageToCanvasBlob(imageDisplay);
-      }
-
+      // 2. Write to system clipboard
       await navigator.clipboard.write([
-        new ClipboardItem({ [blob.type]: blob })
+        new ClipboardItem({ 'image/png': pngBlob })
       ]);
 
       const originalText = btnCopy.textContent;
       btnCopy.textContent = '✅ Copied!';
       setTimeout(() => { btnCopy.textContent = originalText; }, 2000);
     } catch (err) {
-      console.error('Copy execution error:', err);
+      console.error('Clipboard Error:', err);
 
-      // Secondary Attempt via HTML5 Canvas
-      try {
-        const canvasBlob = await imageToCanvasBlob(imageDisplay);
-        await navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': canvasBlob })
-        ]);
-        
-        const originalText = btnCopy.textContent;
-        btnCopy.textContent = '✅ Copied!';
-        setTimeout(() => { btnCopy.textContent = originalText; }, 2000);
-      } catch (fallbackErr) {
-        console.error('Canvas Fallback Copy Error:', fallbackErr);
-        
-        if (!window.isSecureContext) {
-          swal ? swal("Copy Blocked", "Clipboard write requires HTTPS or localhost (e.g., Live Server).", "error")
-               : alert("Copy blocked: Web browsers require HTTPS or localhost (VS Code Live Server) to copy images.");
-        } else {
-          swal ? swal("Copy Failed", "Browser blocked direct copy. Right-click the image to copy manually.", "error")
-               : alert("Copy failed. Try right-clicking the image directly to copy.");
-        }
+      if (!window.isSecureContext) {
+        alert("Copying images directly requires a secure context (HTTPS or http://localhost). If opening locally, use VS Code Live Server.");
+      } else {
+        alert("Copy failed. Try right-clicking the image and selecting 'Copy Image'.");
       }
     }
   });
 }
 
-// 2. SAVE BUTTON: Generates programmatic local anchor download
+// --- Save Action ---
 if (btnSave) {
   btnSave.addEventListener('click', () => {
     if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
-      swal ? swal("Empty Canvas", "No image available to save!", "warning") : alert("No image available to save!");
+      alert("No image available to save!");
       return;
     }
 
@@ -194,7 +151,7 @@ if (btnSave) {
   });
 }
 
-// 3. REFRESH BUTTON: Reloads room payload state
+// --- Refresh Action ---
 if (btnRefresh) {
   btnRefresh.addEventListener('click', () => {
     const originalText = btnRefresh.textContent;
@@ -203,7 +160,7 @@ if (btnRefresh) {
   });
 }
 
-// 4. CLEAR BUTTON: Resets image display container back to empty state
+// --- Clear Action ---
 if (btnClear) {
   btnClear.addEventListener('click', () => {
     imageDisplay.src = '';
@@ -212,9 +169,7 @@ if (btnClear) {
   });
 }
 
-// --- Event Listeners ---
-
-// Global Clipboard Paste Listener
+// --- Global Paste & Drag Drop Event Listeners ---
 window.addEventListener('paste', (e) => {
   const items = e.clipboardData?.items;
   if (!items) return;
@@ -228,7 +183,6 @@ window.addEventListener('paste', (e) => {
   }
 });
 
-// Drag and Drop Zone Handling
 if (dropZone) {
   dropZone.addEventListener('click', () => fileInput && fileInput.click());
 
@@ -259,7 +213,6 @@ if (fileInput) {
   });
 }
 
-// Room Management Controls
 if (goRoomBtn) {
   goRoomBtn.addEventListener('click', () => {
     const value = roomInput.value.trim();
@@ -283,5 +236,4 @@ if (copyUrlBtn) {
   });
 }
 
-// Entrypoint Initialization
 initRoom();
