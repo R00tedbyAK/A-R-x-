@@ -30,12 +30,42 @@ const btnSave = document.getElementById('btnSave');
 const btnClear = document.getElementById('btnClear');
 const copyUrlBtn = document.getElementById('copyUrlBtn');
 
+// --- Helper Functions ---
+
+// Converts Base64 Data URL directly to a strictly-typed Image Blob
+function dataURLtoBlob(dataurl) {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime || 'image/png' });
+}
+
+// Fallback: Redraws image on HTML5 Canvas to produce a guaranteed PNG Blob
+function imageToCanvasBlob(img) {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Canvas blob generation failed'));
+    }, 'image/png');
+  });
+}
+
 // --- QR Code & Navigation ---
 
 function updateQRCode(url) {
   const qrContainer = document.getElementById('qrcode');
   if (!qrContainer) return;
-
+  
   qrContainer.innerHTML = '';
   qrcodeInstance = new QRCode(qrContainer, {
     text: url,
@@ -52,9 +82,6 @@ function setRoom(roomId) {
   window.location.hash = roomId;
   if (roomInput) roomInput.value = roomId;
   updateQRCode(window.location.href);
-
-  // Automatically fetch room content saved by other devices
-  fetchRoomImageContent(roomId);
 }
 
 function initRoom() {
@@ -66,7 +93,7 @@ function initRoom() {
   }
 }
 
-// --- Image Display Helpers ---
+// --- Image Processing & Display ---
 
 function renderImage(dataUrl) {
   imageDisplay.src = dataUrl;
@@ -74,15 +101,13 @@ function renderImage(dataUrl) {
   if (imageDisplayContainer) imageDisplayContainer.classList.remove('hidden');
 }
 
-function clearCanvas() {
-  imageDisplay.src = '';
-  if (emptyState) emptyState.classList.remove('hidden');
-  if (imageDisplayContainer) imageDisplayContainer.classList.add('hidden');
-}
-
 function handleFile(file) {
   if (!file || !file.type.startsWith('image/')) {
-    alert("Please select or paste a valid image file.");
+    if (typeof swal === "function") {
+      swal("Invalid File", "Please select or paste a valid image file.", "error");
+    } else {
+      alert("Please select or paste a valid image file.");
+    }
     return;
   }
   
@@ -91,100 +116,105 @@ function handleFile(file) {
   reader.readAsDataURL(file);
 }
 
-// --- Backend API Syncing (Cross-Device Core) ---
+// --- Button Actions ---
 
-// 1. FETCH CONTENT: Retrieves saved room content from backend
-async function fetchRoomImageContent(roomId) {
-  try {
-    const res = await fetch(`/api/room?id=${roomId}`);
-    if (!res.ok) {
-      clearCanvas();
-      return;
-    }
-    const data = await res.json();
-    if (data && data.imageData) {
-      renderImage(data.imageData);
-    }
-  } catch (err) {
-    console.log('No existing room data found on backend.');
-  }
-}
-
-// 2. SAVE BUTTON ACTION: Uploads the active image payload to the backend room URL
-if (btnSave) {
-  btnSave.addEventListener('click', async () => {
-    if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
-      alert("No image available to save!");
-      return;
-    }
-
-    const origText = btnSave.textContent;
-    btnSave.textContent = 'Syncing...';
-
-    try {
-      const response = await fetch(`/api/room?id=${currentRoom}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageData: imageDisplay.src })
-      });
-
-      if (response.ok) {
-        btnSave.textContent = 'Saved to Room!';
-      } else {
-        btnSave.textContent = 'Error Saving';
-      }
-    } catch (err) {
-      alert("Failed to sync room content across devices.");
-      btnSave.textContent = 'Save Failed';
-    }
-
-    setTimeout(() => { btnSave.textContent = origText; }, 2000);
-  });
-}
-
-// --- Other Toolbar Buttons ---
-
-// COPY BUTTON
+// 1. COPY BUTTON: Tries direct Base64 Blob conversion -> Canvas fallback -> Clipboard
 if (btnCopy) {
   btnCopy.addEventListener('click', async () => {
     if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
-      alert("No image to copy!");
+      swal ? swal("Empty Canvas", "No image available to copy!", "warning") : alert("No image available to copy!");
       return;
     }
+
     try {
-      const response = await fetch(imageDisplay.src);
-      const blob = await response.blob();
+      let blob;
+
+      if (imageDisplay.src.startsWith('data:')) {
+        blob = dataURLtoBlob(imageDisplay.src);
+      } else {
+        // Fetch external/HTTP URL sources
+        const response = await fetch(imageDisplay.src);
+        blob = await response.blob();
+      }
+
+      // Convert JPEG/WebP or invalid formats to standard image/png for Clipboard API compatibility
+      if (!['image/png', 'image/jpeg'].includes(blob.type)) {
+        blob = await imageToCanvasBlob(imageDisplay);
+      }
+
       await navigator.clipboard.write([
         new ClipboardItem({ [blob.type]: blob })
       ]);
-      const origText = btnCopy.textContent;
+
+      const originalText = btnCopy.textContent;
       btnCopy.textContent = '✅ Copied!';
-      setTimeout(() => { btnCopy.textContent = origText; }, 2000);
+      setTimeout(() => { btnCopy.textContent = originalText; }, 2000);
     } catch (err) {
-      alert("Copy failed. Try right-clicking the image directly.");
+      console.error('Copy execution error:', err);
+
+      // Secondary Attempt via HTML5 Canvas
+      try {
+        const canvasBlob = await imageToCanvasBlob(imageDisplay);
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': canvasBlob })
+        ]);
+        
+        const originalText = btnCopy.textContent;
+        btnCopy.textContent = '✅ Copied!';
+        setTimeout(() => { btnCopy.textContent = originalText; }, 2000);
+      } catch (fallbackErr) {
+        console.error('Canvas Fallback Copy Error:', fallbackErr);
+        
+        if (!window.isSecureContext) {
+          swal ? swal("Copy Blocked", "Clipboard write requires HTTPS or localhost (e.g., Live Server).", "error")
+               : alert("Copy blocked: Web browsers require HTTPS or localhost (VS Code Live Server) to copy images.");
+        } else {
+          swal ? swal("Copy Failed", "Browser blocked direct copy. Right-click the image to copy manually.", "error")
+               : alert("Copy failed. Try right-clicking the image directly to copy.");
+        }
+      }
     }
   });
 }
 
-// REFRESH BUTTON
-if (btnRefresh) {
-  btnRefresh.addEventListener('click', async () => {
-    const origText = btnRefresh.textContent;
-    btnRefresh.textContent = 'Syncing...';
-    await fetchRoomImageContent(currentRoom);
-    setTimeout(() => { btnRefresh.textContent = origText; }, 800);
+// 2. SAVE BUTTON: Generates programmatic local anchor download
+if (btnSave) {
+  btnSave.addEventListener('click', () => {
+    if (!imageDisplay.src || imageDisplayContainer.classList.contains('hidden')) {
+      swal ? swal("Empty Canvas", "No image available to save!", "warning") : alert("No image available to save!");
+      return;
+    }
+
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.href = imageDisplay.src;
+    downloadAnchor.download = `airx-${currentRoom}.png`;
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    document.body.removeChild(downloadAnchor);
   });
 }
 
-// CLEAR BUTTON
+// 3. REFRESH BUTTON: Reloads room payload state
+if (btnRefresh) {
+  btnRefresh.addEventListener('click', () => {
+    const originalText = btnRefresh.textContent;
+    btnRefresh.textContent = 'Syncing...';
+    setTimeout(() => { btnRefresh.textContent = originalText; }, 1000);
+  });
+}
+
+// 4. CLEAR BUTTON: Resets image display container back to empty state
 if (btnClear) {
   btnClear.addEventListener('click', () => {
-    clearCanvas();
+    imageDisplay.src = '';
+    if (emptyState) emptyState.classList.remove('hidden');
+    if (imageDisplayContainer) imageDisplayContainer.classList.add('hidden');
   });
 }
 
-// --- Global Event Listeners ---
+// --- Event Listeners ---
 
+// Global Clipboard Paste Listener
 window.addEventListener('paste', (e) => {
   const items = e.clipboardData?.items;
   if (!items) return;
@@ -198,25 +228,28 @@ window.addEventListener('paste', (e) => {
   }
 });
 
+// Drag and Drop Zone Handling
 if (dropZone) {
   dropZone.addEventListener('click', () => fileInput && fileInput.click());
 
-  ['dragenter', 'dragover'].forEach(name => {
-    dropZone.addEventListener(name, (e) => {
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, (e) => {
       e.preventDefault();
       dropZone.classList.add('drag-over');
     });
   });
 
-  ['dragleave', 'drop'].forEach(name => {
-    dropZone.addEventListener(name, (e) => {
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
     });
   });
 
   dropZone.addEventListener('drop', (e) => {
-    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files.length) {
+      handleFile(e.dataTransfer.files[0]);
+    }
   });
 }
 
@@ -226,6 +259,7 @@ if (fileInput) {
   });
 }
 
+// Room Management Controls
 if (goRoomBtn) {
   goRoomBtn.addEventListener('click', () => {
     const value = roomInput.value.trim();
@@ -236,18 +270,18 @@ if (goRoomBtn) {
 if (newRoomBtn) {
   newRoomBtn.addEventListener('click', () => {
     setRoom(generateHandle());
-    clearCanvas();
+    if (btnClear) btnClear.click();
   });
 }
 
 if (copyUrlBtn) {
   copyUrlBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(window.location.href);
-    const origText = copyUrlBtn.textContent;
+    const originalText = copyUrlBtn.textContent;
     copyUrlBtn.textContent = 'Link Copied!';
-    setTimeout(() => { copyUrlBtn.textContent = origText; }, 2000);
+    setTimeout(() => { copyUrlBtn.textContent = originalText; }, 2000);
   });
 }
 
-// Initialization
+// Entrypoint Initialization
 initRoom();
